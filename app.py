@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List
 
@@ -41,6 +42,9 @@ async def pixelcrm_prefill(ien: str):
     """
     try:
         data = get_dossier_from_pixelcrm(ien)
+    except RuntimeError as e:
+        print("Erreur PixelCRM :", e)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print("Erreur PixelCRM :", e)
         raise HTTPException(status_code=500, detail="Erreur lors de l'appel à PixelCRM.")
@@ -49,6 +53,13 @@ async def pixelcrm_prefill(ien: str):
         raise HTTPException(status_code=404, detail="Dossier introuvable dans PixelCRM.")
 
     return JSONResponse(data)
+
+
+@app.get("/pixelcrm-config")
+async def pixelcrm_config():
+    required = ["PIXELCRM_COMPANY", "PIXELCRM_USERNAME", "PIXELCRM_PASSWORD"]
+    missing = [key for key in required if not os.getenv(key)]
+    return {"ready": not missing, "missing": missing}
 
 
 @app.post("/analyze")
@@ -67,14 +78,20 @@ async def analyze_dossier(
     upload_root.mkdir(exist_ok=True)
 
     pdf_paths: list[Path] = []
+    ignored_files: list[str] = []
 
     # 2) Sauvegarder chaque fichier (en ignorant les chemins des sous-dossiers)
     for f in files:
         safe_name = Path(f.filename).name  # on ne garde que le nom
         dest = upload_root / safe_name
 
+        content = await f.read()
+        if not content:
+            ignored_files.append(safe_name)
+            continue
+
         with dest.open("wb") as out:
-            out.write(await f.read())
+            out.write(content)
 
         pdf_paths.append(dest)
 
@@ -96,6 +113,14 @@ async def analyze_dossier(
 
     # 4) Analyse (règles Python)
     result = validate_dossier(dossier)
+
+    if ignored_files:
+        ignored_msg = f"Fichiers PDF ignorés car vides : {', '.join(ignored_files)}"
+        result.setdefault("problems", []).append(ignored_msg)
+        summary = result.setdefault("summary", {})
+        reasons = summary.setdefault("main_reasons", [])
+        if ignored_msg not in reasons:
+            reasons.append(ignored_msg)
 
     # 5) Export sur Google Drive
     try:
