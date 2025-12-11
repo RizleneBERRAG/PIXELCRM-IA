@@ -1,0 +1,39 @@
+{
+  "HOMELIOR": {
+    "devis": {
+      "header_format": "DEVIS 2024-",
+      "prix_unitaire": "42.315",
+      "tva": "20%",
+      "date_min": "2024-01-01",
+      "date_max": "2024-02-28",
+      "materiel_fournisseur": "INFINY ENVIRONNEMENT",
+      "type_eclairage": ["éclairage ambiance", "éclairage privé"],
+      "reste_a_payer": "0,00"
+    },
+
+    "cadre": {
+      "prime_must_match_cee": true,
+      "date_equals_devis": true
+    },
+
+    "aft": {
+      "date_engagement_equals_devis": true,
+      "date_realisation_equals_facture": true,
+      "type_eclairage_phrase": "éclairage de type ambiance ou privé"
+    },
+
+    "facture": {
+      "date_devis_equals_devis": true,
+      "reste_a_payer": "0,00",
+      "tva": "20%"
+    },
+
+    "bon_livraison": {
+      "date_equals_facture": true
+    },
+
+    "attestation_fin_travaux": {
+      "date_equals_facture_and_bl": true
+    }
+  }
+}
