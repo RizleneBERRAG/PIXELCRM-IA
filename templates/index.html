@@ -41,6 +41,7 @@
               PixelCRM
             </button>
           </div>
+          <p id="pixelConfigStatus" class="mt-1 text-xs text-slate-500"></p>
           <p id="pixelStatus" class="mt-1 text-xs text-slate-500"></p>
         </div>
 
@@ -229,14 +230,50 @@
 
       const fieldIen      = document.getElementById("fieldIen");
       const pixelStatus   = document.getElementById("pixelStatus");
+      const pixelConfigStatus = document.getElementById("pixelConfigStatus");
       const btnPixelPrefill = document.getElementById("btnPixelPrefill");
 
       // --- 3) Pré-remplissage automatique via PixelCRM ---
       const delegSelect = document.querySelector('select[name="delegataire"]');
 
         let lastFetchedIen = "";
+        let pixelcrmReady = true;
+
+        const refreshPixelConfig = async () => {
+          if (!pixelConfigStatus) return;
+          try {
+            const res = await fetch("/pixelcrm-config");
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+
+            if (data.ready) {
+              pixelcrmReady = true;
+              pixelConfigStatus.textContent = "Connexion PixelCRM prête. Vous pouvez pré-remplir les champs automatiquement.";
+              pixelConfigStatus.className = "mt-1 text-xs text-emerald-600";
+              btnPixelPrefill.disabled = false;
+            } else {
+              pixelcrmReady = false;
+              const missing = (data.missing || []).join(", ") || "configuration manquante";
+              pixelConfigStatus.textContent = `Configuration PixelCRM manquante (${missing}). Complétez les variables d'environnement avant de pré-remplir.`;
+              pixelConfigStatus.className = "mt-1 text-xs text-red-500";
+              btnPixelPrefill.disabled = true;
+            }
+          } catch (err) {
+            pixelcrmReady = false;
+            pixelConfigStatus.textContent = "Impossible de vérifier la configuration PixelCRM pour le moment.";
+            pixelConfigStatus.className = "mt-1 text-xs text-orange-600";
+            btnPixelPrefill.disabled = true;
+          }
+        };
+
         const fetchPixelData = async () => {
           const ien = fieldIen.value.trim();
+
+          if (!pixelcrmReady) {
+            pixelStatus.textContent = pixelConfigStatus?.textContent || "Configuration PixelCRM manquante.";
+            pixelStatus.className = "mt-1 text-xs text-red-500";
+            return;
+          }
 
           if (!ien || ien === lastFetchedIen) {
             if (!ien) {
@@ -311,6 +348,8 @@
             fetchPixelData();
           }
         });
+
+        refreshPixelConfig();
 
       // --- 4) Gestion fichiers ---
       dropzone.addEventListener("click", () => fileInput.click());
