@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List
 
@@ -41,6 +42,9 @@ async def pixelcrm_prefill(ien: str):
     """
     try:
         data = get_dossier_from_pixelcrm(ien)
+    except RuntimeError as e:
+        print("Erreur PixelCRM :", e)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print("Erreur PixelCRM :", e)
         raise HTTPException(status_code=500, detail="Erreur lors de l'appel à PixelCRM.")
@@ -49,6 +53,13 @@ async def pixelcrm_prefill(ien: str):
         raise HTTPException(status_code=404, detail="Dossier introuvable dans PixelCRM.")
 
     return JSONResponse(data)
+
+
+@app.get("/pixelcrm-config")
+async def pixelcrm_config():
+    required = ["PIXELCRM_COMPANY", "PIXELCRM_USERNAME", "PIXELCRM_PASSWORD"]
+    missing = [key for key in required if not os.getenv(key)]
+    return {"ready": not missing, "missing": missing}
 
 
 @app.post("/analyze")
