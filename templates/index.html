@@ -237,43 +237,8 @@
       const delegSelect = document.querySelector('select[name="delegataire"]');
 
         let lastFetchedIen = "";
-        let pixelcrmReady = true;
-
-        const refreshPixelConfig = async () => {
-          if (!pixelConfigStatus) return;
-          try {
-            const res = await fetch("/pixelcrm-config");
-            if (!res.ok) throw new Error();
-            const data = await res.json();
-
-            if (data.ready) {
-              pixelcrmReady = true;
-              pixelConfigStatus.textContent = "Connexion PixelCRM prête. Vous pouvez pré-remplir les champs automatiquement.";
-              pixelConfigStatus.className = "mt-1 text-xs text-emerald-600";
-              btnPixelPrefill.disabled = false;
-            } else {
-              pixelcrmReady = false;
-              const missing = (data.missing || []).join(", ") || "configuration manquante";
-              pixelConfigStatus.textContent = `Configuration PixelCRM manquante (${missing}). Complétez les variables d'environnement avant de pré-remplir.`;
-              pixelConfigStatus.className = "mt-1 text-xs text-red-500";
-              btnPixelPrefill.disabled = true;
-            }
-          } catch (err) {
-            pixelcrmReady = false;
-            pixelConfigStatus.textContent = "Impossible de vérifier la configuration PixelCRM pour le moment.";
-            pixelConfigStatus.className = "mt-1 text-xs text-orange-600";
-            btnPixelPrefill.disabled = true;
-          }
-        };
-
         const fetchPixelData = async () => {
           const ien = fieldIen.value.trim();
-
-          if (!pixelcrmReady) {
-            pixelStatus.textContent = pixelConfigStatus?.textContent || "Configuration PixelCRM manquante.";
-            pixelStatus.className = "mt-1 text-xs text-red-500";
-            return;
-          }
 
           if (!ien || ien === lastFetchedIen) {
             if (!ien) {
@@ -291,17 +256,7 @@
             const res = await fetch(`/pixelcrm-prefill?ien=${encodeURIComponent(ien)}`);
 
             if (!res.ok) {
-              let errMsg = "Impossible de récupérer le dossier PixelCRM (vérifier l'IEN).";
-              try {
-                const errData = await res.json();
-                if (errData?.detail) {
-                  errMsg = errData.detail;
-                }
-              } catch (_) {
-                const txt = await res.text();
-                if (txt) errMsg = txt;
-              }
-              throw new Error(errMsg);
+              throw new Error("Réponse serveur inattendue");
             }
 
             const data = await res.json();
@@ -332,8 +287,7 @@
             pixelStatus.className = "mt-1 text-xs text-emerald-600";
           } catch (error) {
             console.error(error);
-            lastFetchedIen = ien;
-            pixelStatus.textContent = error?.message || "Impossible de récupérer le dossier PixelCRM.";
+            pixelStatus.textContent = "Impossible de récupérer le dossier PixelCRM (vérifier l'IEN).";
             pixelStatus.className = "mt-1 text-xs text-red-500";
           } finally {
             btnPixelPrefill.disabled = false;
@@ -348,8 +302,6 @@
             fetchPixelData();
           }
         });
-
-        refreshPixelConfig();
 
       // --- 4) Gestion fichiers ---
       dropzone.addEventListener("click", () => fileInput.click());
