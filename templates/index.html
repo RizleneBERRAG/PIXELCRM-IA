@@ -11,6 +11,11 @@
     <h1 class="text-2xl font-bold text-slate-800">
       Contrôle de conformité des dossiers <span class="text-indigo-600">PixelCRM</span>
     </h1>
+    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-slate-700 space-y-1">
+      <p class="font-semibold text-indigo-700">Utilisation ultra simple :</p>
+      <p>1) Saisir le numéro IEN, 2) déposer les PDF (ou un dossier complet), 3) cliquer « Analyser ».</p>
+      <p class="text-slate-600">L'outil pré-remplit automatiquement les infos PixelCRM, fait l'OCR, vérifie les règles métiers et classe le dossier.</p>
+    </div>
 
     <!-- Formulaire -->
     <form id="dossierForm" class="space-y-4">
@@ -26,6 +31,7 @@
               required
               class="block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="IEN-2025-XXXXX"
+              autocomplete="off"
             />
             <button
               type="button"
@@ -108,21 +114,33 @@
         class="mt-4 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl px-4 py-10 bg-slate-50 cursor-pointer hover:border-indigo-400 transition"
       >
         <input
-          id="fileInput"
-          type="file"
-          name="files"
-          multiple
-          webkitdirectory
-          directory
-          class="hidden"
-          accept="application/pdf"
-        />
+            id="fileInput"
+            type="file"
+            name="files"
+            multiple
+            webkitdirectory
+            directory
+            mozdirectory
+            class="hidden"
+            accept="application/pdf"
+          />
         <p class="text-sm text-slate-600 text-center">
           Glisser-déposer ici les PDF du dossier (devis, facture, attestation...) ou
           <span class="text-indigo-600 font-medium">cliquer pour sélectionner un ou plusieurs fichiers / un dossier</span>.<br />
           <span class="text-xs text-slate-400">Les fichiers vides (0 Ko) seront ignorés automatiquement.</span>
         </p>
         <ul id="fileList" class="mt-3 text-xs text-slate-700 space-y-1"></ul>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600">
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <p class="font-semibold text-slate-700">Identification automatique :</p>
+          <p>Devis, Facture, AH, AFT, Bon de livraison, Cadre de contribution, avec OCR si besoin.</p>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <p class="font-semibold text-slate-700">Vérifications clés :</p>
+          <p>Mentions obligatoires, dates cohérentes, montants alignés avec PixelCRM, SIRET identique, ordre logique des documents.</p>
+        </div>
       </div>
 
       <div class="flex items-center justify-between pt-4 border-t border-slate-200">
@@ -164,6 +182,10 @@
           <ul id="resSummary" class="list-disc list-inside text-sm text-slate-700 space-y-1"></ul>
         </div>
         <div>
+          <h3 class="text-sm font-semibold text-slate-800 mb-1">Documents détectés :</h3>
+          <ul id="resDocs" class="list-disc list-inside text-sm text-slate-700 space-y-1"></ul>
+        </div>
+        <div>
           <h3 class="text-sm font-semibold text-slate-800 mb-1">Détails techniques :</h3>
           <ul id="resProblems" class="list-disc list-inside text-sm text-slate-700 space-y-1"></ul>
         </div>
@@ -201,6 +223,7 @@
       const resDossier    = document.getElementById("resDossier");
       const resDelegataire= document.getElementById("resDelegataire");
       const resSummary    = document.getElementById("resSummary");
+      const resDocs       = document.getElementById("resDocs");
       const resProblems   = document.getElementById("resProblems");
       const driveLink     = document.getElementById("driveLink");
 
@@ -208,13 +231,86 @@
       const pixelStatus   = document.getElementById("pixelStatus");
       const btnPixelPrefill = document.getElementById("btnPixelPrefill");
 
-      // --- 3) Nouveau comportement du bouton PixelCRM ---
-      btnPixelPrefill.addEventListener("click", () => {
-        pixelStatus.textContent =
-          "Astuce : sur PixelCRM, sélectionne l'IEN avec la souris puis clique sur ton favori 'Pixel → IA' pour ouvrir cet outil déjà pré-rempli.";
-        pixelStatus.classList.remove("text-red-500", "text-emerald-600");
-        pixelStatus.classList.add("text-slate-500");
-      });
+      // --- 3) Pré-remplissage automatique via PixelCRM ---
+      const delegSelect = document.querySelector('select[name="delegataire"]');
+
+        let lastFetchedIen = "";
+        const fetchPixelData = async () => {
+          const ien = fieldIen.value.trim();
+
+          if (!ien || ien === lastFetchedIen) {
+            if (!ien) {
+              pixelStatus.textContent = "Merci d'indiquer un numéro IEN avant de pré-remplir.";
+              pixelStatus.className = "mt-1 text-xs text-red-500";
+            }
+            return;
+          }
+
+          pixelStatus.textContent = "Recherche des informations PixelCRM…";
+          pixelStatus.className = "mt-1 text-xs text-slate-500";
+          btnPixelPrefill.disabled = true;
+
+          try {
+            const res = await fetch(`/pixelcrm-prefill?ien=${encodeURIComponent(ien)}`);
+
+            if (!res.ok) {
+              let errMsg = "Impossible de récupérer le dossier PixelCRM (vérifier l'IEN).";
+              try {
+                const errData = await res.json();
+                if (errData?.detail) {
+                  errMsg = errData.detail;
+                }
+              } catch (_) {
+                const txt = await res.text();
+                if (txt) errMsg = txt;
+              }
+              throw new Error(errMsg);
+            }
+
+            const data = await res.json();
+
+            // Remplissage des champs texte
+            if (data.client_nom !== undefined) clientField.value = data.client_nom || "";
+            if (data.siret !== undefined)       siretField.value = data.siret || "";
+            if (data.type_operation !== undefined) typeOpField.value = data.type_operation || "";
+            if (data.prime_cee !== undefined)   primeField.value = data.prime_cee || "";
+            if (data.numero_prime !== undefined)primeNumField.value = data.numero_prime || "";
+
+            // Remplissage du délégataire
+            if (delegSelect && data.delegataire) {
+              const existing = Array.from(delegSelect.options).find((opt) => opt.value === data.delegataire);
+
+              if (!existing) {
+                const opt = document.createElement("option");
+                opt.value = data.delegataire;
+                opt.textContent = `${data.delegataire} (PixelCRM)`;
+                delegSelect.appendChild(opt);
+              }
+
+              delegSelect.value = data.delegataire;
+            }
+
+            lastFetchedIen = ien;
+            pixelStatus.textContent = "Champs remplis automatiquement depuis PixelCRM.";
+            pixelStatus.className = "mt-1 text-xs text-emerald-600";
+          } catch (error) {
+            console.error(error);
+            lastFetchedIen = ien;
+            pixelStatus.textContent = error?.message || "Impossible de récupérer le dossier PixelCRM.";
+            pixelStatus.className = "mt-1 text-xs text-red-500";
+          } finally {
+            btnPixelPrefill.disabled = false;
+          }
+        };
+
+        btnPixelPrefill.addEventListener("click", fetchPixelData);
+        fieldIen.addEventListener("blur", fetchPixelData);
+        fieldIen.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            fetchPixelData();
+          }
+        });
 
       // --- 4) Gestion fichiers ---
       dropzone.addEventListener("click", () => fileInput.click());
@@ -303,6 +399,16 @@
             const li = document.createElement("li");
             li.textContent = p;
             resSummary.appendChild(li);
+          });
+
+          resDocs.innerHTML = "";
+          const docPresence = data.document_presence || [];
+          docPresence.forEach((doc) => {
+            const li = document.createElement("li");
+            li.textContent = `${doc.present ? "✔️" : "❌"} ${doc.type}` +
+              (doc.example ? ` (${doc.example})` : "");
+            li.className = doc.present ? "text-emerald-700" : "text-red-600";
+            resDocs.appendChild(li);
           });
 
           resProblems.innerHTML = "";
